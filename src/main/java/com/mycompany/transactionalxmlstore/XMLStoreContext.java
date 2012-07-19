@@ -30,9 +30,17 @@ public class XMLStoreContext
     private static Properties staticConfig = null;
     private static XAFileSystem xaf = null;
     private static Map<File, XMLStoreContext> contextMap = new ConcurrentHashMap<File, XMLStoreContext>();
-    
     private static Map<Class, IXMLStoreContextFirstInstanceInitializer> refAdaptersInitializators = new DefaultedConcurrentHashMap<Class, IXMLStoreContextFirstInstanceInitializer>(new DefaultXMLStoreContextInitializer());
     private static Map<Class, XmlAdapter> refAdapters = new HashMap<Class, XmlAdapter>();
+
+    private class XMLStoreSetEntry
+    {
+
+        public Field declaredField;
+        public Class forClass;
+        public Field withPKeyField;
+        public File location;
+    }
 
     private static interface IXMLStoreContextFirstInstanceInitializer
     {
@@ -52,7 +60,7 @@ public class XMLStoreContext
 
     private static class DefaultXMLStoreContextInitializer implements IXMLStoreContextFirstInstanceInitializer
     {
-        
+
         @Override
         public void initializeClass(XMLStoreContext xsc)
         {
@@ -133,10 +141,10 @@ public class XMLStoreContext
     void plugContextAdaptersForReferences(Class c, Field pKeyField, Marshaller entityMarshaller)
     {
         System.out.println("Plugging marshallers");
-        for ( Class pc : mappedClasses )
+        for (Class pc : mappedClasses)
         {
             //if ( pc == c ) continue;
-                    System.out.println(pc.getSimpleName());
+            System.out.println(pc.getSimpleName());
             entityMarshaller.setAdapter(pc, new FkXmlAdapter(pKeyField, c));
         }
     }
@@ -235,7 +243,7 @@ public class XMLStoreContext
     {
         File stloc = new File(this.config.getProperty("XMLStoreLocation"));
         Class<? extends XMLStoreContext> aClass = this.getClass();
-        
+
         File storeLoc = chcekStorePresence(contextMap.keySet(), stloc);
         if (storeLoc != null)
         {
@@ -244,7 +252,7 @@ public class XMLStoreContext
         {
             modelMapping = prepareModelMapping(ContextReflectUtils.listAllSetFieldsFor(this.getClass()));
             mappedClasses = ContextReflectUtils.fieldsToContainedTypes(new LinkedList<Field>(modelMapping.keySet()));
-            
+
             chceckAndCreateDictionaryStructure(modelMapping);
 
             refAdaptersInitializators.get(this.getClass()).initializeClass(this);
