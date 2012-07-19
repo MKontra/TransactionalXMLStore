@@ -216,7 +216,7 @@ public class XMLStoreContext
                     Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, ex);
                 } catch (InvocationTargetException ex)
                 {
-                    Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, ex.getTargetException());
                 } catch (IllegalArgumentException ex)
                 {
                     Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, ex);

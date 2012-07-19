@@ -1,7 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.mycompany.transactionalxmlstore.XMLStoreContextTestSuite.XMLStoreContextTest
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 1.872 sec <<< FAILURE!
-testSetExtraction(com.mycompany.transactionalxmlstore.XMLStoreContextTestSuite.XMLStoreContextTest)  Time elapsed: 1.857 sec  <<< ERROR!
-java.lang.NullPointerException
-	at com.mycompany.transactionalxmlstore.XMLStoreContextTestSuite.XMLStoreContextTest.testSetExtraction(XMLStoreContextTest.java:40)
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.968 sec

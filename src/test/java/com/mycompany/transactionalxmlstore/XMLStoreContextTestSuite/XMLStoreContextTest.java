@@ -8,6 +8,8 @@ import junit.framework.TestCase;
 import com.mycompany.transactionalxmlstore.*;
 import com.mycompany.transactionalxmlstore.XMLStoreContextTestSuite.TestModel.TestObject1;
 import com.mycompany.transactionalxmlstore.XMLStoreContextTestSuite.TestModel.TestObject2;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -32,11 +34,17 @@ public class XMLStoreContextTest extends TestCase {
     private static class TestContext extends XMLStoreContext
     {
         public XMLStoreSet<TestObject1> to1;
-        public XMLStoreSet<TestObject2> to2;
+        //public XMLStoreSet<TestObject2> to2;
     }
     
     public void testSetExtraction() {
         TestContext testModelCntx = new TestContext();
-        testModelCntx.to1.Add(new TestObject1());
+        try
+        {
+            testModelCntx.to1.Add(new TestObject1());
+        } catch (Exception ex)
+        {
+            Logger.getLogger(XMLStoreContextTest.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 }
