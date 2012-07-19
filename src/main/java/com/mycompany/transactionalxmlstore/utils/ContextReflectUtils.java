@@ -17,16 +17,33 @@ import java.util.logging.Logger;
  *
  * @author Administrator
  */
-public final class ContextReflectUtils {
+public final class ContextReflectUtils
+{
 
-    private ContextReflectUtils() {
+    private ContextReflectUtils()
+    {
     }
 
-    public static List<Field> listAllSetFieldsFor(Class xsc) {
+    public static List<Class> fieldsToContainedTypes(List<Field> flds)
+    {
+        List<Class> retval = new LinkedList<Class>();
+        for (Field f : flds)
+        {
+            retval.add(getXMLStoreSetContainedType(f));
+        }
+
+        return retval;
+
+    }
+
+    public static List<Field> listAllSetFieldsFor(Class xsc)
+    {
         Field[] declaredFields = xsc.getDeclaredFields();
         List<Field> sets = new LinkedList<Field>();
-        for (Field f : declaredFields) {
-            if (XMLStoreSet.class.isAssignableFrom( f.getType() ))  {
+        for (Field f : declaredFields)
+        {
+            if (XMLStoreSet.class.isAssignableFrom(f.getType()))
+            {
                 sets.add(f);
             }
         }
@@ -34,6 +51,7 @@ public final class ContextReflectUtils {
         return sets;
 
     }
+
     private static List<Class<?>> getAllContextModels(Class<?> c)
     {
         List<Field> allSetsForThis = ContextReflectUtils.listAllSetFieldsFor(c);
@@ -46,7 +64,9 @@ public final class ContextReflectUtils {
 
         return retval;
     }
-    public static Class getXMLStoreSetContainedType(Field f) {
-        return (Class) ((ParameterizedType) f.getGenericType() ).getActualTypeArguments()[0];
+
+    public static Class getXMLStoreSetContainedType(Field f)
+    {
+        return (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
     }
 }

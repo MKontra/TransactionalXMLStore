@@ -12,5 +12,11 @@ import javax.persistence.Id;
  */
 public class TestObject1 {
     @Id
-    private long Id;
+    public long Id;
+    
+    public String Description;
+    
+    @javax.persistence.OneToMany
+    public TestObject2 to2ref;
+    
 }

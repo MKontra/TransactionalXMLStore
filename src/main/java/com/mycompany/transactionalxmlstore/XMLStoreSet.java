@@ -4,16 +4,23 @@
  */
 package com.mycompany.transactionalxmlstore;
 
-import com.mycompany.transactionalxmlstore.utils.EntityReflectUtils;
+import com.mycompany.transactionalxmlstore.utils.*;
 import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
 import java.io.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.persistence.SequenceGenerator;
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBElement;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Marshaller;
+import javax.xml.namespace.QName;
 import org.xadisk.additional.XAFileOutputStreamWrapper;
+import org.xadisk.bridge.proxies.interfaces.Session;
 
 /**
  *
@@ -32,42 +39,6 @@ public class XMLStoreSet<T>
     private Map<Object, File> trackingMap = new HashMap<Object, File>();
     private Map<Object, Object> oldStateMap = new HashMap<Object, Object>();
 
-    private static String pKeyToFileName(Object pKey)
-    {
-        if (pKey.getClass() == long.class)
-        {
-            return String.valueOf((Long) pKey);
-        } else
-        {
-            if (pKey.getClass() == String.class)
-            {
-                return (String) pKey;
-            } else
-            {
-                if (pKey.getClass() == int.class)
-                {
-                    return String.valueOf((Integer) pKey);
-                }
-            }
-        }
-        return pKey.toString();
-    }
-
-    private Object getPrimaryKeyValue(T obj)
-    {
-        try
-        {
-            return this.pKeyField.get(obj);
-        } catch (IllegalArgumentException ex)
-        {
-            Logger.getLogger(XMLStoreSet.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IllegalAccessException ex)
-        {
-            Logger.getLogger(XMLStoreSet.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        return null;
-    }
-
     private Object getEntityForFile(InputStream f)
     {
         return null;
@@ -77,8 +48,13 @@ public class XMLStoreSet<T>
     {
         try
         {
-            os.write('A');
-        } catch (IOException ex)
+            JAXBContext jaxbcntx = JAXBContext.newInstance( forcls );
+            Marshaller entityMarshaller = jaxbcntx.createMarshaller();
+            context.plugContextAdaptersForReferences(forcls, pKeyField, entityMarshaller);
+            //context.validateRestraintsFor(forcls, o);
+            JAXBElement jx = new JAXBElement(new QName(forcls.getSimpleName()), forcls, o);
+            entityMarshaller.marshal(jx, os);    
+        } catch (JAXBException ex)
         {
             Logger.getLogger(XMLStoreSet.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -109,13 +85,15 @@ public class XMLStoreSet<T>
 
     public T Load(Object pkey)
     {
+        Session cntxSession = context.getXaDiskSession();
+        IFileOperations fhandler = cntxSession == null ? new FileToIFileOperations() : new XADiskSessionToIFileOperations(cntxSession);
         Object tme = oldStateMap.get(pkey);
         if (tme != null)
         {
             return (T) tme;
         } else
         {
-            File entityFile = new File(f.getPath() + File.separator + pKeyToFileName(pkey));
+            File entityFile = new File(f.getPath() + File.separator + PrimaryKeyUtils.pKeyToFileName(pkey));
             if (!entityFile.exists())
             {
                 return null;
@@ -138,27 +116,24 @@ public class XMLStoreSet<T>
 
     public void Add(T obj) throws Exception
     {
-        File toAdd = new File(f.getPath() + File.separator + pKeyToFileName(getPrimaryKeyValue(obj)));
-        if (toAdd.exists())
+        Session cntxSession = context.getXaDiskSession();
+        IFileOperations fhandler = cntxSession == null ? new FileToIFileOperations() : new XADiskSessionToIFileOperations(cntxSession);
+        File toAdd = new File(f.getPath() + File.separator + PrimaryKeyUtils.pKeyToFileName(PrimaryKeyUtils.getPrimaryKeyValue(this.pKeyField, obj)));
+        if (fhandler.fileExists(toAdd, false))
         {
             throw new Exception("PKey already present");
         }
 
-        toAdd.createNewFile();
+        fhandler.createFile(toAdd, false);
 
-        OutputStream os = null;
-        if ( context.getXaDiskSession() != null )
-        {
-            os = new XAFileOutputStreamWrapper(context.getXaDiskSession().createXAFileOutputStream(toAdd, false));
-        } else
-        {
-            os = new FileOutputStream(toAdd);
-        }
+        OutputStream os = fhandler.createFileOutputStream(toAdd);
         
         storeEntityToStream(obj, os);
         
-        oldStateMap.put(getPrimaryKeyValue(obj), obj);
-        trackingMap.put(getPrimaryKeyValue(obj), toAdd);
+        oldStateMap.put(PrimaryKeyUtils.getPrimaryKeyValue(this.pKeyField, obj), obj);
+        trackingMap.put(PrimaryKeyUtils.getPrimaryKeyValue(this.pKeyField, obj), toAdd);
+        
+        os.close();
     }
     
     public void Remove(T obj)

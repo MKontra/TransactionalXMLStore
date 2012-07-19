@@ -5,18 +5,20 @@
 package com.mycompany.transactionalxmlstore;
 
 import com.mycompany.transactionalxmlstore.utils.ContextReflectUtils;
+import com.mycompany.transactionalxmlstore.utils.DefaultedConcurrentHashMap;
 import java.io.*;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.*;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.xml.bind.Marshaller;
 import org.xadisk.bridge.proxies.interfaces.*;
 import org.xadisk.filesystem.exceptions.NoTransactionAssociatedException;
 import org.xadisk.filesystem.standalone.StandaloneFileSystemConfiguration;
+import javax.xml.bind.annotation.adapters.XmlAdapter;
 
 /**
  *
@@ -28,6 +30,39 @@ public class XMLStoreContext
     private static Properties staticConfig = null;
     private static XAFileSystem xaf = null;
     private static Map<File, XMLStoreContext> contextMap = new ConcurrentHashMap<File, XMLStoreContext>();
+    
+    private static Map<Class, IXMLStoreContextFirstInstanceInitializer> refAdaptersInitializators = new DefaultedConcurrentHashMap<Class, IXMLStoreContextFirstInstanceInitializer>(new DefaultXMLStoreContextInitializer());
+    private static Map<Class, XmlAdapter> refAdapters = new HashMap<Class, XmlAdapter>();
+
+    private static interface IXMLStoreContextFirstInstanceInitializer
+    {
+
+        public void initializeClass(XMLStoreContext xsc);
+    }
+
+    private static class XMLStoreContextDoNothingInitializer implements IXMLStoreContextFirstInstanceInitializer
+    {
+
+        @Override
+        public void initializeClass(XMLStoreContext xsc)
+        {
+            //Do Nothing
+        }
+    }
+
+    private static class DefaultXMLStoreContextInitializer implements IXMLStoreContextFirstInstanceInitializer
+    {
+        
+        @Override
+        public void initializeClass(XMLStoreContext xsc)
+        {
+            synchronized (XMLStoreContext.class)
+            {
+                List<Field> classFields = ContextReflectUtils.listAllSetFieldsFor(this.getClass());
+                xsc.refAdaptersInitializators.put(xsc.getClass(), new XMLStoreContextDoNothingInitializer());
+            }
+        }
+    }
 
     static
     {
@@ -82,6 +117,7 @@ public class XMLStoreContext
     }
     private File store;
     private Map<Field, File> modelMapping;
+    private List<Class> mappedClasses;
     private org.xadisk.bridge.proxies.interfaces.Session xaDiskSession;
 
     public Session getXaDiskSession()
@@ -92,6 +128,22 @@ public class XMLStoreContext
     private Class<?> getDerivingClass()
     {
         return this.getClass();
+    }
+
+    void plugContextAdaptersForReferences(Class c, Field pKeyField, Marshaller entityMarshaller)
+    {
+        System.out.println("Plugging marshallers");
+        for ( Class pc : mappedClasses )
+        {
+            //if ( pc == c ) continue;
+                    System.out.println(pc.getSimpleName());
+            entityMarshaller.setAdapter(pc, new FkXmlAdapter(pKeyField, c));
+        }
+    }
+
+    void validateRestraintsFor(Class forcls, Object o)
+    {
+        throw new UnsupportedOperationException("Not yet implemented");
     }
 
     private class DefaultProperties extends Properties
@@ -133,13 +185,11 @@ public class XMLStoreContext
         Map<Field, File> retval = new ConcurrentHashMap<Field, File>();
         for (Field f : models)
         {
-            File checkedDir = new File(this.config.getProperty("XMLStoreLocation") + File.separator +f.getName());
+            File checkedDir = new File(this.config.getProperty("XMLStoreLocation") + File.separator + f.getName());
             retval.put(f, checkedDir);
         }
         return retval;
     }
-
-
 
     private static void chceckAndCreateDictionaryStructure(Map<Field, File> mapping)
     {
@@ -185,7 +235,7 @@ public class XMLStoreContext
     {
         File stloc = new File(this.config.getProperty("XMLStoreLocation"));
         Class<? extends XMLStoreContext> aClass = this.getClass();
-        System.out.println(aClass.getSimpleName());
+        
         File storeLoc = chcekStorePresence(contextMap.keySet(), stloc);
         if (storeLoc != null)
         {
@@ -193,23 +243,27 @@ public class XMLStoreContext
         } else
         {
             modelMapping = prepareModelMapping(ContextReflectUtils.listAllSetFieldsFor(this.getClass()));
+            mappedClasses = ContextReflectUtils.fieldsToContainedTypes(new LinkedList<Field>(modelMapping.keySet()));
+            
             chceckAndCreateDictionaryStructure(modelMapping);
+
+            refAdaptersInitializators.get(this.getClass()).initializeClass(this);
 
             List<Field> classFields = ContextReflectUtils.listAllSetFieldsFor(this.getClass());
             for (Field f : classFields)
             {
                 try
                 {
-                    XMLStoreSet inst = 
+                    XMLStoreSet inst =
                             (XMLStoreSet) XMLStoreSet.class.getDeclaredConstructor(
-                            XMLStoreContext.class, 
+                            XMLStoreContext.class,
                             Class.class,
                             File.class).newInstance(
-                            this, 
+                            this,
                             ContextReflectUtils.getXMLStoreSetContainedType(f),
                             modelMapping.get(f));
                     f.setAccessible(true);
-                    f.set(this, inst );
+                    f.set(this, inst);
                     f.setAccessible(false);
                 } catch (InstantiationException ex)
                 {
