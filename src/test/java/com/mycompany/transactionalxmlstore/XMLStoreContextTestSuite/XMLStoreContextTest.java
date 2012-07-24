@@ -50,10 +50,20 @@ public class XMLStoreContextTest extends TestCase {
             to2i.Description = "Simple object different class";
             
             to1i.to2ref = to2i;
-            testModelCntx.to1.Add(to1i);
+            testModelCntx.to1.add(to1i);
         } catch (Exception ex)
         {
             Logger.getLogger(XMLStoreContextTest.class.getName()).log(Level.SEVERE, null, ex);
         }
+        
+        try
+        {
+            TestObject1 toUnmc = testModelCntx.to1.load(1);
+            System.out.println("co je totok za jebnuty debugger");
+        } catch (Exception ex)
+        {
+            Logger.getLogger(XMLStoreContextTest.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
     }
 }

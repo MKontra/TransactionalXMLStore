@@ -4,21 +4,13 @@
  */
 package com.mycompany.transactionalxmlstore;
 
-import com.mycompany.transactionalxmlstore.utils.ContextReflectUtils;
-import com.mycompany.transactionalxmlstore.utils.DefaultedConcurrentHashMap;
-import java.io.*;
-import java.lang.reflect.*;
-import java.net.URL;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.io.File;
+import java.util.Map.Entry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.xml.bind.Marshaller;
-import org.xadisk.bridge.proxies.interfaces.*;
+import org.xadisk.bridge.proxies.interfaces.Session;
+import org.xadisk.bridge.proxies.interfaces.XAFileSystem;
 import org.xadisk.filesystem.exceptions.NoTransactionAssociatedException;
-import org.xadisk.filesystem.standalone.StandaloneFileSystemConfiguration;
-import javax.xml.bind.annotation.adapters.XmlAdapter;
 
 /**
  *
@@ -27,20 +19,145 @@ import javax.xml.bind.annotation.adapters.XmlAdapter;
 public class XMLStoreContext
 {
 
+    private static XMLStoreContextRegister registry = new XMLStoreContextRegister();
+    private XMLStoreConfiguration instanceConfiguration = new XMLStoreConfiguration();
+    
+    private XAFileSystem xaf = XADiskInstanceManager.INSTANCE.getFileSystemInstance();
+    
+    private File contextLocation;
+    private XMLStoreContextEntry xsce;
+    
+    private org.xadisk.bridge.proxies.interfaces.Session xaDiskSession;
+
+    public Session getXaDiskSession()
+    {
+        return xaDiskSession;
+    }
+    
+    private Class<?> getDerivingClass()
+    {
+        return this.getClass();
+    }
+
+    public XMLStoreContext()
+    {
+        this.instanceConfiguration.setLocation(getDerivingClass().getSimpleName());
+        this.initializeStore();
+    }
+
+    public XMLStoreContext(String location)
+    {
+        this.instanceConfiguration.setLocation(location);
+        this.initializeStore();
+    }
+
+    public XMLStoreContext(XMLStoreConfiguration config)
+    {
+        this.instanceConfiguration = config;
+        this.initializeStore();
+    }
+
+    private void initializeStore()
+    {
+        contextLocation = new File(this.instanceConfiguration.getLocation());
+        xsce = registry.registerContextForLocation(contextLocation, getDerivingClass());
+        if (xsce.contextDerivedClass != getDerivingClass())
+        {
+            Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, new Exception("Context class invalid in location"));
+            return;
+        }
+        
+        for (Entry<File, XMLStoreSetEntry> ent : xsce.managedSets.entrySet())
+        {
+            try
+            {
+                XMLStoreSet inst =
+                        (XMLStoreSet) XMLStoreSet.class.getDeclaredConstructor(
+                        XMLStoreContext.class,
+                        File.class).newInstance(
+                        this,
+                        ent.getKey());
+                ent.getValue().declaredField.setAccessible(true);
+                ent.getValue().declaredField.set(this, inst);
+            } catch (Exception ex)
+            {
+                Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, ex);
+            }
+
+        }
+
+    }
+    
+    
+    
+    public boolean beginTransaction()
+    {
+        if (xaDiskSession == null)
+        {
+            xaDiskSession = xaf.createSessionForLocalTransaction();
+            return true;
+        } else
+        {
+            return false;
+        }
+    }
+    
+    public boolean rollback() throws NoTransactionAssociatedException
+    {
+        if (xaDiskSession == null)
+        {
+            return false;
+        } else
+        {
+            xaDiskSession.rollback();
+            xaDiskSession = null;
+            return true;
+        }
+    }
+    
+    public boolean commit() throws NoTransactionAssociatedException
+    {
+        if (xaDiskSession == null)
+        {
+            return false;
+        } else
+        {
+            xaDiskSession.commit();
+            xaDiskSession = null;
+            return true;
+        }
+    }
+    
+    public void addToStore(Object o, File loc)
+    {
+        IXMLStoreContextOperationsProvider opprov = xsce.managedSets.get(loc).provider;
+        if  (xaDiskSession != null ) opprov.bindToSession(xaDiskSession);
+        opprov.add(o);
+        opprov.unbindSession();
+    }
+    
+    public Object loadFromStore(Object pKey, File loc)
+    {
+        IXMLStoreContextOperationsProvider opprov = xsce.managedSets.get(loc).provider;
+        if  (xaDiskSession != null ) opprov.bindToSession(xaDiskSession);
+        Object retval = opprov.load(pKey);
+        opprov.unbindSession();
+        return retval;
+    }
+    
+}
+    /**
+public class XMLStoreContext
+{
+
     private static Properties staticConfig = null;
     private static XAFileSystem xaf = null;
-    private static Map<File, XMLStoreContext> contextMap = new ConcurrentHashMap<File, XMLStoreContext>();
+    private static List<XMLStoreContextEntry> initializedContexts = new LinkedList<XMLStoreContextEntry>();
     private static Map<Class, IXMLStoreContextFirstInstanceInitializer> refAdaptersInitializators = new DefaultedConcurrentHashMap<Class, IXMLStoreContextFirstInstanceInitializer>(new DefaultXMLStoreContextInitializer());
     private static Map<Class, XmlAdapter> refAdapters = new HashMap<Class, XmlAdapter>();
 
-    private class XMLStoreSetEntry
-    {
 
-        public Field declaredField;
-        public Class forClass;
-        public Field withPKeyField;
-        public File location;
-    }
+    private List<XMLStoreSetEntry> managedSets = new LinkedList<XMLStoreSetEntry>();
 
     private static interface IXMLStoreContextFirstInstanceInitializer
     {
@@ -74,64 +191,13 @@ public class XMLStoreContext
 
     static
     {
-        InputStream is = null;
-        Properties prop = new Properties();
-        staticConfig = prop;
-        try
-        {
 
-            URL confurl = ClassLoader.getSystemResource("XMLStoreConfig.xml");
-            if (confurl != null)
-            {
-                is = confurl.openStream();
-                prop.loadFromXML(is);
-            }
-
-
-        } catch (IOException ex)
-        {
-            Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, "Could not load properties", ex);
-        } finally
-        {
-            try
-            {
-                if (is != null)
-                {
-                    is.close();
-                }
-            } catch (Throwable ex)
-            {
-                Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, "Error closing property stream", ex);
-            }
-        }
-
-        String instanceName = staticConfig.getProperty("XADiskInstanceName", "defaultXADiskSystemLocation");
-        String XADiskSystemLocation = staticConfig.getProperty("XADiskSystemLocation", ".") + File.separator + staticConfig.getProperty("APPName", "defaultXADiskInstance");
-
-        StandaloneFileSystemConfiguration configuration =
-                new StandaloneFileSystemConfiguration(XADiskSystemLocation, instanceName);
-
-
-        xaf = XAFileSystemProxy.bootNativeXAFileSystem(configuration);
-        try
-        {
-            xaf.waitForBootup(10000L);
-        } catch (InterruptedException ex)
-        {
-            xaf = null;
-            Logger.getLogger(XMLStoreContext.class.getName()).log(Level.SEVERE, null, ex);
-        }
 
     }
     private File store;
     private Map<Field, File> modelMapping;
     private List<Class> mappedClasses;
-    private org.xadisk.bridge.proxies.interfaces.Session xaDiskSession;
 
-    public Session getXaDiskSession()
-    {
-        return xaDiskSession;
-    }
 
     private Class<?> getDerivingClass()
     {
@@ -157,10 +223,7 @@ public class XMLStoreContext
     private class DefaultProperties extends Properties
     {
 
-        public DefaultProperties()
-        {
-            this.setProperty("XMLStoreLocation", getDerivingClass().getSimpleName());
-        }
+
     }
 
     private class DelegatingProperties extends Properties
@@ -186,29 +249,8 @@ public class XMLStoreContext
             return fwding.getProperty(key, defaultInstance.getProperty(key, defaultValue));
         }
     }
-    private Properties config = new Properties(new DefaultProperties());
 
-    private Map<Field, File> prepareModelMapping(List<Field> models)
-    {
-        Map<Field, File> retval = new ConcurrentHashMap<Field, File>();
-        for (Field f : models)
-        {
-            File checkedDir = new File(this.config.getProperty("XMLStoreLocation") + File.separator + f.getName());
-            retval.put(f, checkedDir);
-        }
-        return retval;
-    }
 
-    private static void chceckAndCreateDictionaryStructure(Map<Field, File> mapping)
-    {
-        for (File f : mapping.values())
-        {
-            if (!f.exists())
-            {
-                f.mkdirs();
-            }
-        }
-    }
 
     private static File chcekStorePresence(Set<File> locations, File thisloc)
     {
@@ -360,3 +402,4 @@ public class XMLStoreContext
         super.finalize();
     }
 }
+**/

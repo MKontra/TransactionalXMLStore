@@ -40,7 +40,7 @@ public class DeferedLoadMethodInterceptor implements MethodInterceptor
         //synchronized ?
         if ( !initialized )
         {
-            EntityReflectUtils.setEntityValuesTo(o, store.Load(pKey));
+            EntityReflectUtils.setEntityValuesTo(o, store.load(pKey));
             initialized = true;
         }
         return mp.invokeSuper(o, os);

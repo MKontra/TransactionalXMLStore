@@ -5,11 +5,11 @@
 package com.mycompany.transactionalxmlstore;
 
 import com.mycompany.transactionalxmlstore.utils.*;
-import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,6 +26,40 @@ import org.xadisk.bridge.proxies.interfaces.Session;
  *
  * @author Administrator
  */
+public class XMLStoreSet<T>
+{
+
+    private XMLStoreContext xsc;
+    private File location;
+
+    public XMLStoreSet(XMLStoreContext xsc, File loc)
+    {
+        this.xsc = xsc;
+        this.location = loc;
+    }
+    
+    public void add(T obj)
+    {
+        xsc.addToStore(obj, location);
+    }
+    
+    public T load(Object pKey)
+    {
+        return (T) xsc.loadFromStore(pKey, location);
+    }
+    
+    public List<T> loadByAttribute(String name, Object value)
+    {
+        return null;
+    }
+    
+    public void remove(Object pKey)
+    {
+        
+    }
+    
+}
+/**
 public class XMLStoreSet<T>
 {
 
@@ -142,3 +176,4 @@ public class XMLStoreSet<T>
     }
     
 }
+**/
